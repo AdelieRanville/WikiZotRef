@@ -1,6 +1,7 @@
 # WikiZotRef — Wikipedia references to Zotero citations
 
 A single self-contained HTML page that converts a Wikipedia article's wikitext into a Word document whose `<ref>` citations are live Zotero fields, ready for Zotero's "Refresh" to format. No server, no build step, no install: everything runs in the browser.
+To use, download the html file and double click on it : a window opens in your browser.
 
 ## For users
 
