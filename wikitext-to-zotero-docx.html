@@ -1,0 +1,336 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>WikiZotRef — Wikipedia references to Zotero citations</title>
+<style>
+:root{--bg:#f3f5f7;--card:#fff;--fg:#17202b;--mut:#5d6875;--line:#d5dbe2;--acc:#1d6b5a;--warn:#fff3d6;--warnfg:#7a5300}
+@media(prefers-color-scheme:dark){:root{--bg:#12171d;--card:#1a2129;--fg:#e6eaee;--mut:#98a3af;--line:#2d3742;--acc:#4fbf9f;--warn:#3a2f12;--warnfg:#f0c465}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.55 system-ui,-apple-system,"Segoe UI",sans-serif}
+main{max-width:820px;margin:0 auto;padding:2.2rem 1.1rem 4rem}
+h1{font:600 1.9rem/1.2 Georgia,"Times New Roman",serif;margin:0 0 .4rem}
+.sub{color:var(--mut);margin:0 0 1.6rem}
+section{background:var(--card);border:1px solid var(--line);border-radius:6px;padding:1rem 1.2rem;margin-bottom:1rem}
+h2{font:600 1.05rem Georgia,serif;margin:0 0 .3rem}
+h2 span{display:inline-block;min-width:1.5rem;color:var(--acc)}
+p{margin:.2rem 0 .7rem;color:var(--mut);font-size:.92rem}
+textarea{width:100%;min-height:200px;font:13px/1.45 ui-monospace,Menlo,Consolas,monospace;background:var(--bg);color:var(--fg);border:1px solid var(--line);border-radius:4px;padding:.6rem}
+button,.file{font:600 .95rem system-ui,sans-serif;background:var(--acc);color:#fff;border:0;border-radius:4px;padding:.6rem 1.1rem;cursor:pointer;display:inline-block}
+button:disabled{opacity:.4;cursor:not-allowed}
+button:focus-visible,select:focus-visible,textarea:focus-visible,.file:focus-within{outline:3px solid var(--acc);outline-offset:2px}
+input[type=file]{position:absolute;opacity:0;width:1px;height:1px}
+.wrap{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:.85rem}
+th,td{text-align:left;padding:.45rem .5rem;border-bottom:1px solid var(--line);vertical-align:top}
+tr.miss td{background:var(--warn);color:var(--warnfg)}
+select{width:100%;min-width:220px;font:inherit;background:var(--bg);color:var(--fg);border:1px solid var(--line);border-radius:4px;padding:.2rem}
+code{font:12px ui-monospace,Menlo,monospace;word-break:break-all}
+#msg{margin-top:.7rem;font-size:.92rem}
+#msg.err{color:#c0392b}
+</style>
+</head>
+<body>
+<main>
+<h1>WikiZotRef — Wikipedia references to Zotero citations</h1>
+<p class="sub">Paste an article's wikitext, match its references to your Zotero library, and download a Word file with live Zotero citations. Everything runs in your browser.</p>
+<p class="sub"><a href="https://github.com/AdelieRanville/WikiZotRef" target="_blank" rel="noopener">Documentation</a></p>
+
+<section>
+<h2><span>1</span>Add the article's references to your Zotero library</h2>
+<p>Every reference you want converted needs to already exist as an item in your Zotero library — this tool only matches and links, it never creates library items. If the article's sources aren't in your library yet, see the Wikipedia guide on <a href="https://en.wikipedia.org/wiki/Wikipedia:Citing_sources_with_Zotero#Adding_the_references_of_a_Wikipedia_article_to_your_Zotero_library" target="_blank" rel="noopener">adding an article's references to Zotero</a> and Zotero's <a href="https://www.zotero.org/support/kb/zotero_and_wikipedia" target="_blank" rel="noopener">Zotero and Wikipedia</a> page.</p>
+</section>
+
+<section>
+<h2><span>2</span>Load your Zotero library</h2>
+<p>In Zotero: right-click your library or collection, choose Export, format “CSL JSON”. Then select that file here.</p>
+<label class="file">Choose CSL JSON file<input type="file" id="lib" accept=".json,application/json"></label>
+<span id="libinfo" style="margin-left:.7rem;font-size:.9rem"></span>
+</section>
+
+<section>
+<h2><span>3</span>Paste the wikitext</h2>
+<p>Use the article's “Edit source” view, so the <code>&lt;ref&gt;</code> tags are visible.</p>
+<textarea id="wt" spellcheck="false" placeholder="Paste wikitext here…"></textarea>
+<p style="margin-top:.8rem">Base URL for internal <code>[[links]]</code>, so they become clickable in Word. Leave blank to keep them as plain text. <code>{{Wikidata entity link}}</code> templates are always turned into links to wikidata.org, labelled with the item's name.</p>
+<input id="wikibase" type="text" value="https://en.wikipedia.org/wiki/" style="width:100%;font:13px ui-monospace,monospace;background:var(--bg);color:var(--fg);border:1px solid var(--line);border-radius:4px;padding:.45rem .6rem">
+<div style="margin-top:.6rem"><button id="scan">Find references</button></div>
+</section>
+
+<section id="review" hidden>
+<h2><span>4</span>Check the matches</h2>
+<p id="sum"></p>
+<div class="wrap"><table><thead><tr><th>#</th><th>Reference</th><th>Zotero item</th></tr></thead><tbody id="rows"></tbody></table></div>
+<div style="margin-top:.8rem"><button id="go">Download Word file</button></div>
+<div id="msg" role="status"></div>
+</section>
+
+<section>
+<h2>After downloading</h2>
+<p>Open the file in Word, go to the Zotero tab, click Refresh and pick a citation style. Then use “Add/Edit Bibliography” where you want the reference list. References cited in a row are merged into a single Zotero citation; any left unmatched appear in red so you can spot them and insert manually with Zotero's “Add/Edit Citation”.</p>
+</section>
+</main>
+
+<script type="module">
+const $ = id => document.getElementById(id);
+const esc = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+let lib = [], refs = [], text = '';
+
+const qidOf = it => ((it.note||'').match(/^\s*qid\s*:\s*(Q\d+)\s*$/im)||[])[1]?.toUpperCase();
+const normDoi = s => (s||'').toLowerCase().replace(/^https?:\/\/(dx\.)?doi\.org\//,'').replace(/^doi:\s*/,'').trim();
+const doiOf = it => normDoi(it.DOI || ((it.note||'').match(/^\s*doi\s*:\s*(\S+)/im)||[])[1]);
+const normUrl = s => (s||'').trim().replace(/^https?:\/\//,'').replace(/^www\./,'').replace(/\/+$/,'').replace(/[#?].*$/,'').toLowerCase();
+const urlOf = it => normUrl(it.URL);
+const label = it => {
+  const a = (it.author||[])[0] || {};
+  return `${a.family||a.literal||'?'} ${(it.issued?.['date-parts']||[[]])[0][0]||''} – ${(it.title||'').slice(0,90)}`;
+};
+
+$('lib').addEventListener('change', async e => {
+  const f = e.target.files[0]; if (!f) return;
+  try {
+    const j = JSON.parse(await f.text());
+    lib = Array.isArray(j) ? j : (j.items || []);
+    $('libinfo').textContent = `${lib.length} items loaded, ${lib.filter(qidOf).length} with a QID`;
+  } catch { lib = []; $('libinfo').textContent = 'This file is not valid CSL JSON.'; }
+});
+
+$('scan').addEventListener('click', () => {
+  text = $('wt').value; refs = [];
+  const names = {}, re = /<ref\b([^>]*?)\/>|<ref\b([^>]*)>([\s\S]*?)<\/ref>/gi;
+  let m;
+  while ((m = re.exec(text))) {
+    const attrs = m[1] ?? m[2] ?? '', body = m[3] || '';
+    const name = (attrs.match(/name\s*=\s*"?([^"\s\/>]+)"?/i)||[])[1];
+    const r = { start: m.index, end: re.lastIndex, body, name, cands: [], sel: -1 };
+    if (!body && name && names[name] != null) r.dup = names[name];
+    else {
+      r.qid = (body.match(/\bQ\d+\b/)||[])[0];
+      r.doi = normDoi(((body.match(/10\.\d{4,9}\/[^\s|}<\]"]+/)||[''])[0]).replace(/[.,;)]+$/,''));
+      r.url = ((body.match(/\|\s*url\s*=\s*([^|}\s]+)/i)||[])[1] || (body.match(/https?:\/\/[^\s|}\]]+/)||[])[0] || '').replace(/[.,;)]+$/,'');
+      r.page = ((body.match(/\|\s*(?:pages?|pp?)\s*=\s*([^|}]+)/i)||[])[1]||'').trim();
+      r.cands = lib.filter(it => (r.qid && qidOf(it) === r.qid) || (r.doi && doiOf(it) === r.doi));
+      if (!r.cands.length && r.url) r.cands = lib.filter(it => it.URL && urlOf(it) === normUrl(r.url));
+      if (r.cands.length) r.sel = 0;
+      if (name) names[name] = refs.length;
+    }
+    refs.push(r);
+  }
+  const own = refs.filter(r => r.dup == null);
+  $('review').hidden = false;
+  $('sum').textContent = own.length
+    ? `${refs.length} references found, ${own.filter(r => r.sel >= 0).length} of ${own.length} distinct ones matched.${lib.length ? '' : ' Load your Zotero library first (step 1).'}`
+    : 'No <ref> tags found. Check that you pasted the wikitext from “Edit source”.';
+  $('rows').innerHTML = own.map(r => {
+    const i = refs.indexOf(r);
+    const opts = r.cands.map((c,k) => `<option value="${k}">${esc(label(c))}</option>`).join('');
+    return `<tr class="${r.cands.length?'':'miss'}"><td>${i+1}</td>
+      <td><code>${esc((r.qid||r.doi||r.url||r.body.trim()).slice(0,70))}</code>${r.page?`<br>page ${esc(r.page)}`:''}</td>
+      <td><select data-i="${i}">${opts}<option value="-1"${r.cands.length?'':' selected'}>${r.cands.length?'Skip (keep as plain text)':'No match in library, will stay as text'}</option></select></td></tr>`;
+  }).join('');
+  $('rows').querySelectorAll('select').forEach(s => s.addEventListener('change', () => refs[+s.dataset.i].sel = +s.value));
+  $('msg').textContent = '';
+});
+
+function shortCite(it) {
+  const names = (it.author || []).map(a => a.family || a.literal || '').filter(Boolean);
+  let who = names[0] || (it.title||'').slice(0,20) || '?';
+  if (names.length === 2) who += ` & ${names[1]}`;
+  else if (names.length > 2) who += ' et al.';
+  const y = (it.issued && it.issued['date-parts'] && it.issued['date-parts'][0] && it.issued['date-parts'][0][0]) || 'n.d.';
+  return `${who}, ${y}`;
+}
+
+function fieldXml(items) {
+  const citationItems = items.map(({ it, page }) => {
+    const uri = /^https?:/.test(it.id) ? it.id : null;
+    return { id: uri || it.id, uris: uri ? [uri] : [], itemData: it, ...(page ? { locator: page, label: 'page' } : {}) };
+  });
+  const formatted = `(${items.map(({ it }) => shortCite(it)).join('; ')})`;
+  const j = {
+    citationID: Math.random().toString(36).slice(2, 10),
+    properties: { formattedCitation: formatted, plainCitation: formatted, noteIndex: 0 },
+    citationItems,
+    schema: 'https://github.com/citation-style-language/schema/raw/master/csl-citation.json'
+  };
+  return `<w:r><w:fldChar w:fldCharType="begin"/></w:r><w:r><w:instrText xml:space="preserve"> ADDIN ZOTERO_ITEM CSL_CITATION ${esc(JSON.stringify(j))} </w:instrText></w:r><w:r><w:fldChar w:fldCharType="separate"/></w:r><w:r><w:t xml:space="preserve">${esc(formatted)}</w:t></w:r><w:r><w:fldChar w:fldCharType="end"/></w:r>`;
+}
+
+// ==== docx builder (no dependencies: converts basic MediaWiki markup to a .docx) ====
+const W = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main';
+const XH = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
+const crcT = (() => { const t = []; for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0; } return t; })();
+const crc32 = b => { let c = ~0; for (const x of b) c = crcT[(c ^ x) & 255] ^ (c >>> 8); return ~c >>> 0; };
+
+function zip(files) {
+  const enc = new TextEncoder(), parts = [], cd = []; let off = 0;
+  for (const [name, str] of Object.entries(files)) {
+    const n = enc.encode(name), d = enc.encode(str), c = crc32(d);
+    const lh = new DataView(new ArrayBuffer(30));
+    lh.setUint32(0, 0x04034b50, true); lh.setUint16(4, 20, true); lh.setUint16(6, 0x0800, true);
+    lh.setUint16(12, 0x21, true); lh.setUint32(14, c, true); lh.setUint32(18, d.length, true);
+    lh.setUint32(22, d.length, true); lh.setUint16(26, n.length, true);
+    const ch = new DataView(new ArrayBuffer(46));
+    ch.setUint32(0, 0x02014b50, true); ch.setUint16(4, 20, true); ch.setUint16(6, 20, true); ch.setUint16(8, 0x0800, true);
+    ch.setUint16(14, 0x21, true); ch.setUint32(16, c, true); ch.setUint32(20, d.length, true);
+    ch.setUint32(24, d.length, true); ch.setUint16(28, n.length, true); ch.setUint32(42, off, true);
+    parts.push(lh, n, d); cd.push(ch, n); off += 30 + n.length + d.length;
+  }
+  const size = cd.reduce((s, x) => s + x.byteLength, 0), count = Object.keys(files).length;
+  const end = new DataView(new ArrayBuffer(22));
+  end.setUint32(0, 0x06054b50, true); end.setUint16(8, count, true); end.setUint16(10, count, true);
+  end.setUint32(12, size, true); end.setUint32(16, off, true);
+  return new Blob([...parts, ...cd, end], { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
+}
+
+function buildDocx(src, fields, missText, wikiBase, wdLabels) {
+  const links = {}; let linkSeq = 0;
+  const mkLink = (url, label) => { const tok = `LNKREF${String(linkSeq++).padStart(4,'0')}X`; links[tok] = { url, label: (label || url).trim() }; return tok; };
+  const rels = []; let relSeq = 2;
+  const relFor = url => { const id = `rId${relSeq++}`; rels.push({ id, target: url }); return id; };
+
+  const clean = s => {
+    s = s.replace(/\{\{\s*(?:Wikidata entity link|WD entity link)\s*\|\s*(Q\d+)[^}]*\}\}/gi,
+      (m, qid) => mkLink(`https://www.wikidata.org/wiki/${qid}`, (wdLabels && wdLabels[qid.toUpperCase()]) || qid));
+    for (let k = 0; k < 5; k++) s = s.replace(/\{\{[^{}]*\}\}/g, '');
+    s = s.replace(/\[\[(?:File|Image|Category|Fichier|Catégorie)\s*:[^\]]*\]\]/gi, '');
+    s = s.replace(/\[\[([^\]|#]*)(#[^\]|]*)?\|([^\]]*)\]\]/g, (m, title, anchor, lbl) => wikiBase ? mkLink(wikiBase + encodeURI((title||'').trim().replace(/ /g,'_')) + (anchor||''), lbl) : lbl);
+    s = s.replace(/\[\[([^\]|#]*)(#[^\]]*)?\]\]/g, (m, title, anchor) => wikiBase ? mkLink(wikiBase + encodeURI((title||'').trim().replace(/ /g,'_')) + (anchor||''), title) : title);
+    s = s.replace(/\[(https?:\/\/[^\s\]]+)\s+([^\]]+)\]/g, (m, url, lbl) => mkLink(url, lbl));
+    s = s.replace(/\[(https?:\/\/[^\s\]]+)\]/g, (m, url) => mkLink(url, url));
+    s = s.replace(/(^|[\s(])(https?:\/\/[^\s<>\]"]+)/g, (m, pre, url) => pre + mkLink(url, url));
+    return s.replace(/<[^>]+>/g, '').replace(/&nbsp;/g, ' ').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&')
+      .replace(/__[A-Z]+__/g, '').replace(/ {2,}/g, ' ');
+  };
+  const runs = s => {
+    let out = '', b = 0, it = 0;
+    s.split(/(ZOTREF\d{4}X|ZOTMISS\d{4}X|LNKREF\d{4}X|'''''|'''|'')/).forEach(p => {
+      if (!p) return;
+      if (p === "'''''") { b ^= 1; it ^= 1; } else if (p === "'''") b ^= 1; else if (p === "''") it ^= 1;
+      else if (fields[p]) out += fields[p];
+      else if (missText[p]) out += `<w:r><w:rPr><w:color w:val="C0392B"/></w:rPr><w:t xml:space="preserve">${esc(missText[p])}</w:t></w:r>`;
+      else if (links[p]) out += `<w:hyperlink r:id="${relFor(links[p].url)}"><w:r><w:rPr><w:rStyle w:val="Hyperlink"/></w:rPr><w:t xml:space="preserve">${esc(links[p].label)}</w:t></w:r></w:hyperlink>`;
+      else out += `<w:r><w:rPr>${b ? '<w:b/>' : ''}${it ? '<w:i/>' : ''}</w:rPr><w:t xml:space="preserve">${esc(p)}</w:t></w:r>`;
+    });
+    return out;
+  };
+  const P = (s, ppr = '') => { const t = clean(s); return t.trim() ? `<w:p><w:pPr>${ppr}</w:pPr>${runs(t)}</w:p>` : ''; };
+
+  let body = '', para = [], cnt = [];
+  const flush = () => { if (para.length) body += P(para.join(' ')); para = []; };
+  const lines = src.replace(/\r/g, '').split('\n');
+  for (let i = 0; i < lines.length; i++) {
+    const L = lines[i]; let m;
+    if (/^\{\|/.test(L)) {
+      flush(); cnt = []; const rows = [[]];
+      for (i++; i < lines.length && !/^\|\}/.test(lines[i]); i++) {
+        const l = lines[i];
+        if (/^\|-/.test(l)) rows.push([]);
+        else if (/^\|\+/.test(l)) continue;
+        else if (/^[|!]/.test(l)) l.slice(1).split(/\|\||!!/).forEach(c => {
+          const cell = c.replace(/^[^|\[{]*\|(?!\|)/, '').trim();
+          rows[rows.length - 1].push(l[0] === '!' && cell ? `'''${cell}'''` : cell);
+        });
+      }
+      const bd = ['top', 'left', 'bottom', 'right', 'insideH', 'insideV'].map(k => `<w:${k} w:val="single" w:sz="4" w:color="808080"/>`).join('');
+      body += `<w:tbl><w:tblPr><w:tblW w:w="5000" w:type="pct"/><w:tblBorders>${bd}</w:tblBorders></w:tblPr><w:tblGrid/>` +
+        rows.filter(r => r.length).map(r => `<w:tr>${r.map(c => `<w:tc><w:tcPr><w:tcW w:w="0" w:type="auto"/></w:tcPr>${P(c) || '<w:p/>'}</w:tc>`).join('')}</w:tr>`).join('') + '</w:tbl><w:p/>';
+    } else if ((m = L.match(/^(={1,6})\s*(.*?)\s*\1\s*$/))) {
+      flush(); cnt = [];
+      body += P(m[2], `<w:pStyle w:val="Heading${Math.min(4, Math.max(1, m[1].length - 1))}"/>`);
+    } else if ((m = L.match(/^([*#:;]+)\s*(.*)$/))) {
+      flush(); const d = m[1].length, c = m[1][d - 1]; let pre = '';
+      if (c === '#') { cnt[d] = (cnt[d] || 0) + 1; cnt.length = d + 1; pre = cnt[d] + '. '; }
+      else if (c === '*') pre = '• ';
+      body += P(pre + (c === ';' ? `'''${m[2]}'''` : m[2]), `<w:ind w:left="${360 * d}"${pre ? ' w:hanging="260"' : ''}/>`);
+    } else if (!L.trim() || /^-{4,}/.test(L)) { flush(); cnt = []; }
+    else { para.push(L.trim()); cnt = []; }
+  }
+  flush();
+
+  const doc = `${XH}<w:document xmlns:w="${W}" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><w:body>${body}<w:sectPr><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="1440" w:right="1440" w:bottom="1440" w:left="1440" w:header="708" w:footer="708" w:gutter="0"/></w:sectPr></w:body></w:document>`;
+  const heads = [36, 30, 26, 24].map((s, k) => `<w:style w:type="paragraph" w:styleId="Heading${k + 1}"><w:name w:val="heading ${k + 1}"/><w:basedOn w:val="Normal"/><w:next w:val="Normal"/><w:pPr><w:keepNext/><w:spacing w:before="280" w:after="100"/><w:outlineLvl w:val="${k}"/></w:pPr><w:rPr><w:b/><w:sz w:val="${s}"/></w:rPr></w:style>`).join('');
+  const styles = `${XH}<w:styles xmlns:w="${W}"><w:docDefaults><w:rPrDefault><w:rPr><w:rFonts w:ascii="Calibri" w:hAnsi="Calibri"/><w:sz w:val="22"/></w:rPr></w:rPrDefault><w:pPrDefault><w:pPr><w:spacing w:after="120" w:line="264" w:lineRule="auto"/></w:pPr></w:pPrDefault></w:docDefaults><w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/></w:style>${heads}<w:style w:type="character" w:styleId="Hyperlink"><w:name w:val="Hyperlink"/><w:rPr><w:color w:val="0563C1"/><w:u w:val="single"/></w:rPr></w:style></w:styles>`;
+  const R = 'http://schemas.openxmlformats.org/package/2006/relationships';
+  const linkRelsXml = rels.map(r => `<Relationship Id="${r.id}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink" Target="${esc(r.target)}" TargetMode="External"/>`).join('');
+  return zip({
+    '[Content_Types].xml': `${XH}<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/><Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/></Types>`,
+    '_rels/.rels': `${XH}<Relationships xmlns="${R}"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>`,
+    'word/_rels/document.xml.rels': `${XH}<Relationships xmlns="${R}"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>${linkRelsXml}</Relationships>`,
+    'word/document.xml': doc,
+    'word/styles.xml': styles
+  });
+}
+// ==== end docx builder ====
+
+$('go').addEventListener('click', async () => {
+  const msg = $('msg'); msg.className = ''; msg.textContent = 'Converting…'; $('go').disabled = true;
+  try {
+    const fields = {}, missText = {}, groups = [];
+    let out = '', pos = 0, missSeq = 0, lastGroup = null;
+    // Refs separated only by whitespace and/or commas (e.g. "<ref/>, <ref/>") count as cited together.
+    const SEP = /^[\s,;]*$/;
+    refs.forEach(r => {
+      const gap = text.slice(pos, r.start); pos = r.end;
+      const src = r.dup != null ? refs[r.dup] : r;
+      if (src.sel >= 0) {
+        if (lastGroup && SEP.test(gap)) {
+          // Directly adjacent to the immediately preceding ref: merge into the same field.
+          lastGroup.items.push({ it: src.cands[src.sel], page: r.page || src.page });
+        } else {
+          out += gap;
+          const tok = `ZOTREF${String(groups.length).padStart(4,'0')}X`;
+          lastGroup = { tok, items: [{ it: src.cands[src.sel], page: r.page || src.page }] };
+          groups.push(lastGroup);
+          out += tok;
+        }
+      } else {
+        out += gap;
+        const tok = `ZOTMISS${String(missSeq++).padStart(4,'0')}X`;
+        missText[tok] = `[unmatched reference: ${(r.body || r.name || '').replace(/[{}|]/g,' ').trim()}]`;
+        out += tok;
+        lastGroup = null; // an unmatched ref in between breaks the adjacency chain
+      }
+    });
+    out += text.slice(pos);
+    out = out.replace(/<references\s*\/>|\{\{\s*reflist[^}]*\}\}/gi, '');
+    groups.forEach(g => { fields[g.tok] = fieldXml(g.items); });
+
+    // A field right after a sentence-ending mark moves before it; every field gets a leading space.
+    out = out.replace(/([.!?])(ZOTREF\d{4}X)/g, '$2$1');
+    out = out.replace(/(ZOTREF\d{4}X)/g, ' $1');
+
+    const wikiBase = ($('wikibase').value || '').trim();
+    const base = wikiBase ? (wikiBase.endsWith('/') ? wikiBase : wikiBase + '/') : '';
+    const wdLang = (base.match(/^https?:\/\/([a-z-]+)\.wik/i) || [])[1]?.toLowerCase() || 'en';
+
+    const qids = [...new Set([...out.matchAll(/\{\{\s*(?:Wikidata entity link|WD entity link)\s*\|\s*(Q\d+)/gi)].map(m => m[1].toUpperCase()))];
+    const wdLabels = {};
+    if (qids.length) {
+      msg.textContent = `Looking up ${qids.length} Wikidata label${qids.length === 1 ? '' : 's'}…`;
+      for (let i = 0; i < qids.length; i += 50) {
+        const batch = qids.slice(i, i + 50);
+        try {
+          const res = await fetch(`https://www.wikidata.org/w/api.php?action=wbgetentities&ids=${batch.join('|')}&props=labels&languages=${wdLang}|en&format=json&origin=*`);
+          const j = await res.json();
+          batch.forEach(q => { wdLabels[q] = j.entities?.[q]?.labels?.[wdLang]?.value || j.entities?.[q]?.labels?.en?.value || q; });
+        } catch { batch.forEach(q => { wdLabels[q] = q; }); } // offline or blocked: fall back to showing the QID
+      }
+      msg.textContent = 'Converting…';
+    }
+
+    const blob = buildDocx(out, fields, missText, base, wdLabels);
+    const a = Object.assign(document.createElement('a'), { href: URL.createObjectURL(blob), download: 'article.docx' });
+    a.click();
+    const n = groups.length;
+    msg.textContent = `Done: ${n} citation${n === 1 ? '' : 's'} inserted. Open the file in Word and click Refresh in the Zotero tab.`;
+  } catch (err) {
+    msg.className = 'err';
+    msg.textContent = `Conversion failed: ${err.message || err}`;
+  }
+  $('go').disabled = false;
+});
+</script>
+</body>
+</html>
